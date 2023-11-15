@@ -161,11 +161,19 @@ class Piano(Instrument):
                         
                     # 각 손가락 끝의 랜드마크 좌표 추출
                         fingertips = []
+                        ll = [7,11,15,19]
+                        i=0
                         for finger_tip_id in [4, 8, 12, 16, 20]:
                             lm = handLms.landmark[finger_tip_id]
-                            h, w, c = result.shape   #좌표가 0~1값임.화면상의 픽셀 좌표로 변환하기 위해 이미지의 크기필요 C는 채널
-                            cx, cy = int(lm.x *w), int(lm.y*h)
-                            fingertips.append((cx,cy))
+                            h, w, c = result.shape
+                            ccy= 0
+                            if i>0 :
+                                llm = handLms.landmark[finger_tip_id-1]
+                                ccx,ccy = int(llm.x * w), int(llm.y * h)
+                            cx, cy = int(lm.x * w), int(lm.y * h)
+                            if ccy<=cy :
+                                fingertips.append((cx, cy))
+                            i+=1
 
                                     
                         for location in  fingertips:
@@ -198,19 +206,34 @@ class Piano(Instrument):
 
                     # 각 손가락 끝의 랜드마크 좌표 추출 (왼손)
                         fingertips1 = []
-                        for finger_tip_id in [4, 8, 12, 16, 20]:
+ 
+                        i=0
+                        for  finger_tip_id in [4, 8, 12, 16, 20]:
                             lm = handLms1.landmark[finger_tip_id]
                             h, w, c = result.shape
+                            ccy= 0
+                            if i>0 :
+                                llm = handLms1.landmark[finger_tip_id-1]
+                                ccx,ccy = int(llm.x * w), int(llm.y * h)
                             cx, cy = int(lm.x * w), int(lm.y * h)
-                            fingertips1.append((cx, cy))
+                            if ccy<=cy :
+                                fingertips1.append((cx, cy))
+                            i+=1
                         
                     # 각 손가락 끝의 랜드마크 좌표 추출 (오른손)
                         fingertips2 = []
-                        for finger_tip_id in [4, 8, 12, 16, 20]:
+                        i=0
+                        for  finger_tip_id in [4, 8, 12, 16, 20]:
                             lm = handLms2.landmark[finger_tip_id]
                             h, w, c = result.shape
+                            ccy= 0
+                            if i>0 :
+                                llm = handLms2.landmark[finger_tip_id-1]
+                                ccx,ccy = int(llm.x * w), int(llm.y * h)
                             cx, cy = int(lm.x * w), int(lm.y * h)
-                            fingertips2.append((cx, cy))
+                            if ccy<=cy :
+                                fingertips2.append((cx, cy))
+                            i+=1
                         #왼손
                         for location in  fingertips1:       
                             cv2.circle(result, location, 5, (255, 0, 0), -1)  
@@ -306,10 +329,10 @@ class Drum(Instrument) :
         self.prev_event = [0, 0]
         self.drum_sound_window = None
 
-        self.mouse_drag_started = False
-        self.roi_points = []
-        self.mouse_click_count = 0
-        self.rectangles = []  
+        self.mouse_drag_started_drum = False
+        self.roi_points_drum = []
+        self.mouse_click_count_drum = 0
+        self.rectangles_drum = []  
         
         self.drum_sounds = ["ride", "crash", "hihat", "low_tom", "mid_tom", "high_tom", "kick", "snare", "sticks"]
         self.drum_sound_objects = [sa.WaveObject.from_wave_file(f'drum/{sound}.wav') for sound in self.drum_sounds]
@@ -357,31 +380,34 @@ class Drum(Instrument) :
         }
         return sound_colors.get(sound, (255, 255, 255))  
 
-    def play_drum_sound(self, sound_idx):
-        drum_sound = self.drum_sound_objects[sound_idx]
-        play_obj = drum_sound.play()
-        play_obj.wait_done()
+    # def play_drum_sound(self, sound_idx):
+    #     drum_sound = self.drum_sound_objects[sound_idx]
+    #     play_obj = drum_sound.play()
+    #     play_obj.wait_done()
 
     event = None
     prev_event = 0
 
     def mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
-            if self.mouse_click_count < 2:
+            if self.mouse_click_count_drum < 2:
+                # 좌표 출력
                 print(f"Clicked: ({x}, {y})")
-                self.roi_points.append((x, y))
-                self.mouse_click_count += 1
+                self.roi_points_drum.append((x, y))
+                self.mouse_click_count_drum += 1
 
-            if self.mouse_click_count == 2:
-                self.mouse_click_count = 0
-                if len(self.roi_points) == 2:  
-                    x1, y1 = self.roi_points[0]
-                    x2, y2 = self.roi_points[1]
-                    self.roi_points = []
+            if self.mouse_click_count_drum == 2:
+                self.mouse_click_count_drum = 0
+                self.mouse_drag_started_drum = True
+                self.roi_points_drum = self.roi_points_drum[-2:]  
 
-                if self.selected_drum_sounds and len(self.current_rectangles) < len(self.selected_drum_sounds):
-                    self.current_rectangles.append(((x1, y1, x2, y2), self.selected_drum_sounds[len(self.current_rectangles)]))
-                    self.mouse_drag_started = True
+                if len(self.rectangles_drum) < 4:
+                    x1, y1 = self.roi_points_drum[0]
+                    x2, y2 = self.roi_points_drum[1]
+                    self.rectangles_drum.append((x1, y1, x2, y2))
+                else:
+                    self.mouse_drag_started_drum = False
+
 
     def start(self):
         self.clear_rectangles()
@@ -390,101 +416,141 @@ class Drum(Instrument) :
 
     def start_webcam(self):
         self.clear_rectangles()
-        self.cap = cv2.VideoCapture(1)
-        cv2.namedWindow('img')
-        cv2.setMouseCallback('img', self.mouse_callback)
+        cap = cv2.VideoCapture(1)
+        cv2.namedWindow('drum')
+        cv2.setMouseCallback('drum', self.mouse_callback)
 
         # 드럼 소리를 재생할 오디오 파일 경로
-        drum_sounds = [self.drum_sound_objects[i] for i in self.selected_drum_sound_indices]
+        # drum_sounds = [self.drum_sound_objects[i] for i in self.selected_drum_sound_indices]
+        drum_sound1 = sa.WaveObject.from_wave_file('drum/hihat.wav')
+        drum_sound2 = sa.WaveObject.from_wave_file('drum/snare.wav')
+        drum_sound3 = sa.WaveObject.from_wave_file('drum/mid_tom.wav')
+        drum_sound4 = sa.WaveObject.from_wave_file('drum/crash.wav')
+
+        event = None
+        prev_event = 0
 
         while True:
-            ret, frame = self.cap.read()
+            ret, frame = cap.read()
+            frame = cv2.flip(frame, 1)
+
             if not ret:
                 break
 
-            frame = cv2.flip(frame, 1)
-            frame = cv2.resize(frame, (800, 600))
-
+            # 가로 해상도를 조정
+            cap_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))  # 현재 캠의 가로 해상도
+            cap_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # 현재 캠의 세로 해상도           
+            width = cap_width * 1.5
+            height = cap_height * 1.5          
+            frame = cv2.resize(frame, (int(width), int(height)), interpolation=cv2.INTER_LINEAR)
+            
             # 이미지를 BGR에서 HSV로 변환
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            
-            img = frame.copy()
 
-            for rectangle, sound in self.current_rectangles:
-                x1, y1, x2, y2 = rectangle
-                color = self.get_color_for_sound(sound)
+            img = frame.copy()
+            cv2.setMouseCallback('drum', self.mouse_callback)
+
+            if self.mouse_drag_started_drum:
+                x1, y1 = self.roi_points_drum[0]
+                x2, y2 = self.roi_points_drum[1]
+
+                color = [(255, 165, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0)][len(self.rectangles_drum)]
+
                 cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
 
-            cv2.imshow('img', img)
+            # 앞서 그린 사각형들이 안 없어지도록 
+            for i, rect in enumerate(self.rectangles_drum):
+                x1, y1, x2, y2 = rect
+                color = [(0, 165, 255), (0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 0, 0)][i]
+                cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
 
-            lower_blue = (90, 100, 100)
+            cv2.imshow('drum', img)
+
+            lower_blue = (100, 130, 80)
             upper_blue = (120, 255, 255)
+
+
             # HSV 이미지에서 색상 범위에 해당하는 영역을 이진화합니다.
             mask = cv2.inRange(hsv, lower_blue, upper_blue)
-            
             # 잡음 제거를 위한 모폴로지 연산
             kernel = np.ones((5,5),np.uint8)
             opening = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
             closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel)
             opening = cv2.morphologyEx(closing, cv2.MORPH_OPEN, kernel)
             closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel)
-            cv2.imshow("closing ",closing )
-
+            # cv2.imshow("closing ",closing )
+            
             # 객체 검출
             contours, _ = cv2.findContours(closing, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             # 두 개의 가장 큰 객체만 추출
-            contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
+            contours = sorted(contours, key=cv2.contourArea, reverse=True)[:1]
 
-            if contours and len(self.current_rectangles) > 0:
+            if contours and len(self.rectangles_drum) > 3:
                 # 객체 위치 추출
                 event = [-1, -1]  # 두 개의 객체에 대한 event 초기화
                 for i, c in enumerate(contours):
                     x, y, w, h = cv2.boundingRect(c)
                     cx = x + w // 2
                     cy = y + h // 2
-
-                    for rectangle, sound in self.current_rectangles:
-                        x1, y1, x2, y2 = rectangle
-                        if x1 < cx < x2 and y1 < cy < y2:
-                            event[i] = self.selected_drum_sounds.index(sound) + 1  
-
-                            # 그리고 해당 드럼 사각형을 초록색으로 표시
-                            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
+            
                     # 원 중심 좌표를 사용하여 소리 재생
-                    if self.rectangles:
-                        for idx, rectangle in enumerate(self.rectangles):
-                            x1, y1, x2, y2 = rectangle
-                            if x1 < cx < x2 and y1 < cy < y2:
-                                event[i] = idx + 1  
-                                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    if self.rectangles_drum[0][0] < cx < self.rectangles_drum[0][2] and self.rectangles_drum[0][1] < cy < self.rectangles_drum[0][3]:
+                        event[i] = 1
+                    elif self.rectangles_drum[1][0] < cx < self.rectangles_drum[1][2] and self.rectangles_drum[1][1] < cy < self.rectangles_drum[1][3]:
+                        event[i] = 2
+                    elif self.rectangles_drum[2][0] < cx < self.rectangles_drum[2][2] and self.rectangles_drum[2][1] < cy < self.rectangles_drum[2][3]:
+                        event[i] = 3
+                    elif self.rectangles_drum[3][0] < cx < self.rectangles_drum[3][2] and self.rectangles_drum[3][1] < cy < self.rectangles_drum[3][3]:
+                        event[i] = 4
+                        
 
+                    # cv2.rectangle(img, (cx - w // 2, cy - h // 2), (cx + w // 2, cy + h // 2), (255,255,255), 2)
+                    cv2.circle(img,(cx,cy),max(w,h)//2,(255,255,255),2)
                 # 두 개의 event 값을 독립적으로 처리
-                for event_idx, event_value in enumerate(event):
-                    if event_value != -1:
-                        if event_value == self.prev_event[event_idx]:
-                            pass
-                        else:
-                            drum_sound = drum_sounds[event_value - 1]  
-                            play_obj = drum_sound.play()
-                            play_obj.wait_done()
-                            self.prev_event[event_idx] = event_value
+                if event[0] != -1:
+                    if event[0] == prev_event[0]:
+                        pass
+                    elif event[0] == 1:
+                        drum_sound1.play()
+                        print("play", event[0])
+                    elif event[0] == 2:
+                        drum_sound2.play()
+                        print("play", event[0])
+                    elif event[0] == 3:
+                        drum_sound3.play()
+                        print("play", event[0])
+                    elif event[0] == 4:
+                        drum_sound4.play()
+                        print("play", event[0])
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
+                if event[1] != -1:
+                    if event[1] == prev_event[1]:
+                        pass
+                    elif event[1] == 1:
+                        drum_sound1.play()
+                        print("play", event[1])
+                    elif event[1] == 2:
+                        drum_sound2.play()
+                        print("play", event[1])
+                    elif event[1] == 3:
+                        drum_sound3.play()
+                        print("play", event[1])
+                    elif event[1] == 4:
+                        drum_sound4.play()
+                        print("play", event[1])
+
+                prev_event = event
+                print(event)
+            
+            # 결과 출력
+            cv2.imshow('drum', img)
+
+            # 'q' 키를 누르면 종료
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-            elif key == ord('1'):
-                if self.current_rectangles:
-                    self.current_rectangles.pop()
-            elif key == ord('2'):
-                self.current_rectangles = []  
-            elif key == ord('3'):
-                self.current_rectangles = []  
-                self.cap.release()
-                self.choose_drum_sounds() 
 
-        self.cap.release()
+        cap.release()
         cv2.destroyAllWindows()
         
 
@@ -519,7 +585,7 @@ def start():
     piano_button.config(width=8, height=2)
    
 
-    drum_button = Button(root, text="드럼",command= drum.start)
+    drum_button = Button(root, text="드럼",command= drum.start_webcam)
     drum_button.configure(font=("휴먼엑스포", 20))
     drum_button.place(relx=0.7, rely=0.7, anchor="center")
     drum_button.config(width=8, height=2)
